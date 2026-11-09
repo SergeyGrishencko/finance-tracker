@@ -1,6 +1,8 @@
 import uvicorn
 from fastapi import FastAPI
 
+from core.configuration.config import Config
+
 app = FastAPI(title="Finance Tracker")
 
 
@@ -10,7 +12,9 @@ def health() -> dict[str, str]:
 
 
 def main() -> None:
-    uvicorn.run("finance_tracker.main:app", host="127.0.0.1", port=8000)
+    config = Config.load()
+    config.ensure_db_dir()
+    uvicorn.run("main:app", host=config.host, port=config.port)
 
 
 if __name__ == "__main__":
