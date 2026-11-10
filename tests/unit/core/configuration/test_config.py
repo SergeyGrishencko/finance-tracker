@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from src.core.configuration.config import Config
+from core.configuration.config import Config
 
 DEFAULT_CONFIG = Config(
     db_path=Path("~/.local/share/finance-tracker/finance-tracker.db").expanduser(),
@@ -45,7 +45,14 @@ def write_env(tmp_path: Path, content: str) -> Path:
             id="empty-file-uses-defaults",
         ),
         pytest.param(
-            "\n".join(f"{key}=" for key in ("FINANCE_TRACKER_DB_PATH", "FINANCE_TRACKER_HOST", "FINANCE_TRACKER_PORT")),
+            "\n".join(
+                f"{key}="
+                for key in (
+                    "FINANCE_TRACKER_DB_PATH",
+                    "FINANCE_TRACKER_HOST",
+                    "FINANCE_TRACKER_PORT",
+                )
+            ),
             DEFAULT_CONFIG,
             id="blank-values-use-defaults",
         ),
@@ -106,7 +113,9 @@ def test_load_expands_user_in_db_path(tmp_path: Path) -> None:
         pytest.param("FINANCE_TRACKER_PORT", id="port"),
     ],
 )
-def test_load_ignores_os_environ(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, env_var: str) -> None:
+def test_load_ignores_os_environ(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, env_var: str
+) -> None:
     monkeypatch.setenv(env_var, "spoiled-value")
     env_path = write_env(
         tmp_path,

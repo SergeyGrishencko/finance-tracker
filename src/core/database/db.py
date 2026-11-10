@@ -1,40 +1,29 @@
 from __future__ import annotations
 
-import sqlite3
 from pathlib import Path
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS transactions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    type TEXT NOT NULL CHECK (type IN ('income', 'expense')),
-    amount INTEGER NOT NULL CHECK (amount > 0),
-    category TEXT NOT NULL,
-    note TEXT NOT NULL DEFAULT '',
-    occurred_at TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-);
+from alembic import command
+from alembic.config import Config as AlembicConfig
+from sqlalchemy import Engine, create_engine
 
-CREATE INDEX IF NOT EXISTS idx_transactions_occurred_at
-    ON transactions (occurred_at);
-
-CREATE INDEX IF NOT EXISTS idx_transactions_type
-    ON transactions (type);
-"""
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+MIGRATIONS_DIR = PROJECT_ROOT / "migrations"
 
 
-def connect(db_path: Path) -> sqlite3.Connection:
-    """Открывает соединение с SQLite-БД и настраивает доступ к колонкам по имени."""
-    connection = sqlite3.connect(db_path)
-    connection.row_factory = sqlite3.Row
-    return connection
+def build_db_url(db_path: Path) -> str:
+    """Собирает URL SQLAlchemy для файла SQLite-БД."""
+    return f"sqlite:///{db_path}"
 
 
-def init_db(db_path: Path) -> None:
-    """Создаёт директорию и файл БД со схемой; безопасен при повторном запуске."""
+def create_db_engine(db_path: Path) -> Engine:
+    """Создаёт движок SQLAlchemy для файла SQLite-БД."""
+    return create_engine(build_db_url(db_path))
+
+
+def run_migrations(db_path: Path) -> None:
+    """Применяет все ожидающие миграции Alembic к БД по указанному пути."""
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    connection = connect(db_path)
-    try:
-        connection.executescript(SCHEMA)
-        connection.commit()
-    finally:
-        connection.close()
+    alembic_cfg = AlembicConfig()
+    alembic_cfg.set_main_option("script_location", str(MIGRATIONS_DIR))
+    alembic_cfg.attributes["db_url"] = build_db_url(db_path)
+    command.upgrade(alembic_cfg, "head")
