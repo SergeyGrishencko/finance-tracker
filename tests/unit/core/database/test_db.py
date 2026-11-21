@@ -2,38 +2,27 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
+from typing import Protocol
 
 import pytest
 
 from core.database.db import run_migrations
 
-INSERT_SQL = (
-    "INSERT INTO transactions (type, amount, category, note, occurred_at) "
-    "VALUES (?, ?, ?, ?, ?)"
-)
+
+class RowQuery(Protocol):
+    """Селект-хелпер тестовой БД: выполняет SQL-запрос и возвращает все найденные строки."""
+
+    def __call__(self, sql: str, params: tuple = ...) -> list[sqlite3.Row]:
+        """Выполняет SELECT-запрос к тестовой БД и возвращает все найденные строки."""
+        ...
 
 
-def connect(db_path: Path) -> sqlite3.Connection:
-    connection = sqlite3.connect(db_path)
-    connection.row_factory = sqlite3.Row
-    return connection
+class TransactionInsert(Protocol):
+    """Вставка-хелпер тестовой БД: добавляет одну транзакцию и коммитит изменения."""
 
-
-def query_all(db_path: Path, sql: str, params: tuple = ()) -> list[sqlite3.Row]:
-    connection = connect(db_path)
-    try:
-        return connection.execute(sql, params).fetchall()
-    finally:
-        connection.close()
-
-
-def insert(db_path: Path, params: tuple) -> None:
-    connection = connect(db_path)
-    try:
-        connection.execute(INSERT_SQL, params)
-        connection.commit()
-    finally:
-        connection.close()
+    def __call__(self, params: tuple) -> None:
+        """Добавляет строку транзакции в тестовую БД с фиксацией коммита."""
+        ...
 
 
 def test_run_migrations_creates_file_in_missing_nested_dir(tmp_path: Path) -> None:
@@ -53,37 +42,27 @@ def test_run_migrations_creates_file_in_missing_nested_dir(tmp_path: Path) -> No
     ],
 )
 def test_run_migrations_creates_schema_objects(
-    tmp_path: Path, object_name: str, object_kind: str
+    query_all: RowQuery, object_name: str, object_kind: str
 ) -> None:
-    db_path = tmp_path / "db.sqlite"
-    run_migrations(db_path)
-
-    found = query_all(db_path, "SELECT type FROM sqlite_master WHERE name = ?", (object_name,))
+    found = query_all("SELECT type FROM sqlite_master WHERE name = ?", (object_name,))
 
     assert [row["type"] for row in found] == [object_kind]
 
 
-def test_run_migrations_stamps_alembic_version(tmp_path: Path) -> None:
-    db_path = tmp_path / "db.sqlite"
-    run_migrations(db_path)
-
+def test_run_migrations_stamps_alembic_version(query_all: RowQuery) -> None:
     tables = query_all(
-        db_path,
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'alembic_version'",
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'alembic_version'"
     )
 
     assert len(tables) == 1
 
 
-def test_run_migrations_is_idempotent(tmp_path: Path) -> None:
-    db_path = tmp_path / "db.sqlite"
-
+def test_run_migrations_is_idempotent(db_path: Path, query_all: RowQuery) -> None:
     run_migrations(db_path)
     run_migrations(db_path)
 
     tables = query_all(
-        db_path,
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'transactions'",
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'transactions'"
     )
     assert len(tables) == 1
 
@@ -97,12 +76,11 @@ def test_run_migrations_is_idempotent(tmp_path: Path) -> None:
         pytest.param(None, id="null"),
     ],
 )
-def test_insert_rejects_invalid_type(tmp_path: Path, invalid_type: str | None) -> None:
-    db_path = tmp_path / "db.sqlite"
-    run_migrations(db_path)
-
+def test_insert_rejects_invalid_type(
+    insert_transaction: TransactionInsert, invalid_type: str | None
+) -> None:
     with pytest.raises(sqlite3.IntegrityError):
-        insert(db_path, (invalid_type, 1050, "Зарплата", "", "2026-11-09"))
+        insert_transaction((invalid_type, 1050, "Зарплата", "", "2026-11-09"))
 
 
 @pytest.mark.parametrize(
@@ -113,12 +91,11 @@ def test_insert_rejects_invalid_type(tmp_path: Path, invalid_type: str | None) -
         pytest.param(None, id="null"),
     ],
 )
-def test_insert_rejects_non_positive_amount(tmp_path: Path, invalid_amount: int | None) -> None:
-    db_path = tmp_path / "db.sqlite"
-    run_migrations(db_path)
-
+def test_insert_rejects_non_positive_amount(
+    insert_transaction: TransactionInsert, invalid_amount: int | None
+) -> None:
     with pytest.raises(sqlite3.IntegrityError):
-        insert(db_path, ("income", invalid_amount, "Зарплата", "", "2026-11-09"))
+        insert_transaction(("income", invalid_amount, "Зарплата", "", "2026-11-09"))
 
 
 @pytest.mark.parametrize(
@@ -128,45 +105,44 @@ def test_insert_rejects_non_positive_amount(tmp_path: Path, invalid_amount: int 
         pytest.param(4, id="null-occurred-at"),
     ],
 )
-def test_insert_rejects_null_required_fields(tmp_path: Path, field_index: int) -> None:
-    db_path = tmp_path / "db.sqlite"
-    run_migrations(db_path)
-
+def test_insert_rejects_null_required_fields(
+    insert_transaction: TransactionInsert, field_index: int
+) -> None:
     params = ["income", 1050, "Зарплата", "", "2026-11-09"]
     params[field_index] = None
 
     with pytest.raises(sqlite3.IntegrityError):
-        insert(db_path, tuple(params))
+        insert_transaction(tuple(params))
 
 
-def test_insert_stores_amount_in_kopecks(tmp_path: Path) -> None:
-    db_path = tmp_path / "db.sqlite"
-    run_migrations(db_path)
-    insert(db_path, ("expense", 1050, "Кафе", "", "2026-11-09"))
+def test_insert_stores_amount_in_kopecks(
+    insert_transaction: TransactionInsert, query_all: RowQuery
+) -> None:
+    insert_transaction(("expense", 1050, "Кафе", "", "2026-11-09"))
 
-    amount = query_all(db_path, "SELECT amount FROM transactions")[0]["amount"]
+    amount = query_all("SELECT amount FROM transactions")[0]["amount"]
 
     assert amount == 1050
     assert isinstance(amount, int)
 
 
-def test_insert_fills_created_at_automatically(tmp_path: Path) -> None:
-    db_path = tmp_path / "db.sqlite"
-    run_migrations(db_path)
-    insert(db_path, ("income", 1050, "Зарплата", "", "2026-11-09"))
+def test_insert_fills_created_at_automatically(
+    insert_transaction: TransactionInsert, query_all: RowQuery
+) -> None:
+    insert_transaction(("income", 1050, "Зарплата", "", "2026-11-09"))
 
-    created_at = query_all(db_path, "SELECT created_at FROM transactions")[0]["created_at"]
+    created_at = query_all("SELECT created_at FROM transactions")[0]["created_at"]
 
     assert isinstance(created_at, str)
     assert created_at.startswith("20")
 
 
-def test_insert_returns_row_with_all_columns(tmp_path: Path) -> None:
-    db_path = tmp_path / "db.sqlite"
-    run_migrations(db_path)
-    insert(db_path, ("expense", 4200, "Продукты", "Пятёрочка", "2026-11-08"))
+def test_insert_returns_row_with_all_columns(
+    insert_transaction: TransactionInsert, query_all: RowQuery
+) -> None:
+    insert_transaction(("expense", 4200, "Продукты", "Пятёрочка", "2026-11-08"))
 
-    row = dict(query_all(db_path, "SELECT * FROM transactions")[0])
+    row = dict(query_all("SELECT * FROM transactions")[0])
 
     assert row == {
         "id": 1,
