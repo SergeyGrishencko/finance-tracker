@@ -37,7 +37,7 @@ class TransactionRepository:
         """Сохраняет сессию БД, через которую выполняются все запросы репозитория."""
         self._session = session
 
-    def add(
+    def add_transaction(
         self,
         *,
         type: TransactionType,
@@ -59,11 +59,13 @@ class TransactionRepository:
         self._session.refresh(transaction)
         return transaction
 
-    def get(self, transaction_id: int) -> Transaction | None:
+    def get_transaction_by_id(self, transaction_id: int) -> Transaction | None:
         """Возвращает транзакцию по id или None, если записи с таким id нет."""
         return self._session.get(Transaction, transaction_id)
 
-    def list(self, filters: TransactionFilters | None = None) -> Sequence[Transaction]:
+    def get_transactions_by_filters(
+        self, filters: TransactionFilters | None = None
+    ) -> Sequence[Transaction]:
         """Возвращает транзакции по фильтрам, отсортированные от свежих к старым."""
         stmt = select(Transaction)
         if filters is not None:
@@ -78,7 +80,7 @@ class TransactionRepository:
         stmt = stmt.order_by(Transaction.occurred_at.desc(), Transaction.id.desc())
         return self._session.scalars(stmt).all()
 
-    def update(
+    def update_transaction(
         self,
         transaction_id: int,
         *,
@@ -89,7 +91,7 @@ class TransactionRepository:
         occurred_at: date | None = None,
     ) -> Transaction | None:
         """Обновляет только переданные поля транзакции либо возвращает None, если её нет."""
-        transaction = self.get(transaction_id)
+        transaction = self.get_transaction_by_id(transaction_id)
         if transaction is None:
             return None
         if type is not None:
@@ -106,9 +108,9 @@ class TransactionRepository:
         self._session.refresh(transaction)
         return transaction
 
-    def delete(self, transaction_id: int) -> bool:
+    def delete_transaction(self, transaction_id: int) -> bool:
         """Удаляет транзакцию по id и сообщает, существовала ли такая запись."""
-        transaction = self.get(transaction_id)
+        transaction = self.get_transaction_by_id(transaction_id)
         if transaction is None:
             return False
         self._session.delete(transaction)

@@ -38,13 +38,15 @@ def seed_transactions(repository: TransactionRepository) -> None:
         (TransactionType.INCOME, 50000, "Фриланс", date(2026, 11, 20)),
     ]
     for type, amount, category, occurred_at in transactions:
-        repository.add(type=type, amount=amount, category=category, occurred_at=occurred_at)
+        repository.add_transaction(
+            type=type, amount=amount, category=category, occurred_at=occurred_at
+        )
 
 
-def test_add_returns_transaction_with_generated_fields(
+def test_add_transaction_returns_transaction_with_generated_fields(
     repository: TransactionRepository,
 ) -> None:
-    transaction = repository.add(
+    transaction = repository.add_transaction(
         type=TransactionType.EXPENSE,
         amount=4200,
         category="Продукты",
@@ -61,10 +63,10 @@ def test_add_returns_transaction_with_generated_fields(
     assert transaction.created_at
 
 
-def test_add_persists_row_in_database(
+def test_add_transaction_persists_row_in_database(
     repository: TransactionRepository, query_all: RowQuery
 ) -> None:
-    repository.add(
+    repository.add_transaction(
         type=TransactionType.INCOME,
         amount=1050,
         category="Зарплата",
@@ -87,19 +89,21 @@ def test_add_persists_row_in_database(
     ]
 
 
-def test_get_returns_none_when_missing(repository: TransactionRepository) -> None:
-    assert repository.get(1) is None
+def test_get_transaction_by_id_returns_none_when_missing(repository: TransactionRepository) -> None:
+    assert repository.get_transaction_by_id(1) is None
 
 
-def test_get_returns_transaction_by_id(repository: TransactionRepository) -> None:
-    added = repository.add(
+def test_get_transaction_by_id_returns_matching_transaction(
+    repository: TransactionRepository,
+) -> None:
+    added = repository.add_transaction(
         type=TransactionType.EXPENSE,
         amount=1500,
         category="Кафе",
         occurred_at=date(2026, 11, 10),
     )
 
-    found = repository.get(added.id)
+    found = repository.get_transaction_by_id(added.id)
 
     assert found is not None
     assert found.id == added.id
@@ -107,32 +111,36 @@ def test_get_returns_transaction_by_id(repository: TransactionRepository) -> Non
     assert found.category == "Кафе"
 
 
-def test_list_returns_empty_result_without_data(repository: TransactionRepository) -> None:
-    assert repository.list() == []
+def test_get_transactions_by_filters_returns_empty_result_without_data(
+    repository: TransactionRepository,
+) -> None:
+    assert repository.get_transactions_by_filters() == []
 
 
-def test_list_orders_transactions_newest_first(repository: TransactionRepository) -> None:
+def test_get_transactions_by_filters_orders_transactions_newest_first(
+    repository: TransactionRepository,
+) -> None:
     seed_transactions(repository)
 
-    amounts = [transaction.amount for transaction in repository.list()]
+    amounts = [transaction.amount for transaction in repository.get_transactions_by_filters()]
 
     assert amounts == [50000, 1500, 4200, 100000]
 
 
-def test_list_orders_same_day_transactions_by_id_desc(
+def test_get_transactions_by_filters_orders_same_day_transactions_by_id_desc(
     repository: TransactionRepository,
 ) -> None:
-    repository.add(
+    repository.add_transaction(
         type=TransactionType.EXPENSE, amount=100, category="Кафе", occurred_at=date(2026, 11, 5)
     )
-    repository.add(
+    repository.add_transaction(
         type=TransactionType.EXPENSE,
         amount=200,
         category="Продукты",
         occurred_at=date(2026, 11, 5),
     )
 
-    amounts = [transaction.amount for transaction in repository.list()]
+    amounts = [transaction.amount for transaction in repository.get_transactions_by_filters()]
 
     assert amounts == [200, 100]
 
@@ -161,32 +169,36 @@ def test_list_orders_same_day_transactions_by_id_desc(
         ),
     ],
 )
-def test_list_applies_filters(
+def test_get_transactions_by_filters_applies_filters(
     repository: TransactionRepository,
     filters: TransactionFilters,
     expected_amounts: list[int],
 ) -> None:
     seed_transactions(repository)
 
-    amounts = [transaction.amount for transaction in repository.list(filters)]
+    amounts = [
+        transaction.amount for transaction in repository.get_transactions_by_filters(filters)
+    ]
 
     assert amounts == expected_amounts
 
 
-def test_list_returns_empty_result_when_filters_match_nothing(
+def test_get_transactions_by_filters_returns_empty_result_when_filters_match_nothing(
     repository: TransactionRepository,
 ) -> None:
     seed_transactions(repository)
 
-    transactions = repository.list(TransactionFilters(category="Путешествия"))
+    transactions = repository.get_transactions_by_filters(
+        TransactionFilters(category="Путешествия")
+    )
 
     assert transactions == []
 
 
-def test_update_changes_provided_fields_and_keeps_the_rest(
+def test_update_transaction_changes_provided_fields_and_keeps_the_rest(
     repository: TransactionRepository,
 ) -> None:
-    added = repository.add(
+    added = repository.add_transaction(
         type=TransactionType.EXPENSE,
         amount=4200,
         category="Продукты",
@@ -194,7 +206,7 @@ def test_update_changes_provided_fields_and_keeps_the_rest(
         occurred_at=date(2026, 11, 5),
     )
 
-    updated = repository.update(added.id, amount=5000, note="Вкусвилл")
+    updated = repository.update_transaction(added.id, amount=5000, note="Вкусвилл")
 
     assert updated is not None
     assert updated.amount == 5000
@@ -204,17 +216,17 @@ def test_update_changes_provided_fields_and_keeps_the_rest(
     assert updated.occurred_at == "2026-11-05"
 
 
-def test_update_converts_type_and_date_to_storage_format(
+def test_update_transaction_converts_type_and_date_to_storage_format(
     repository: TransactionRepository,
 ) -> None:
-    added = repository.add(
+    added = repository.add_transaction(
         type=TransactionType.EXPENSE,
         amount=4200,
         category="Продукты",
         occurred_at=date(2026, 11, 5),
     )
 
-    updated = repository.update(
+    updated = repository.update_transaction(
         added.id, type=TransactionType.INCOME, occurred_at=date(2026, 12, 1)
     )
 
@@ -223,46 +235,46 @@ def test_update_converts_type_and_date_to_storage_format(
     assert updated.occurred_at == "2026-12-01"
 
 
-def test_update_returns_none_when_missing(repository: TransactionRepository) -> None:
-    assert repository.update(999, amount=1) is None
+def test_update_transaction_returns_none_when_missing(repository: TransactionRepository) -> None:
+    assert repository.update_transaction(999, amount=1) is None
 
 
-def test_update_persists_changes_in_database(
+def test_update_transaction_persists_changes_in_database(
     repository: TransactionRepository, query_all: RowQuery
 ) -> None:
-    added = repository.add(
+    added = repository.add_transaction(
         type=TransactionType.EXPENSE,
         amount=4200,
         category="Продукты",
         occurred_at=date(2026, 11, 5),
     )
 
-    repository.update(added.id, amount=5000)
+    repository.update_transaction(added.id, amount=5000)
 
     row = query_all("SELECT amount FROM transactions WHERE id = ?", (added.id,))[0]
 
     assert row["amount"] == 5000
 
 
-def test_delete_removes_transaction_and_returns_true(
+def test_delete_transaction_removes_transaction_and_returns_true(
     repository: TransactionRepository, query_all: RowQuery
 ) -> None:
-    added = repository.add(
+    added = repository.add_transaction(
         type=TransactionType.EXPENSE,
         amount=1500,
         category="Кафе",
         occurred_at=date(2026, 11, 10),
     )
 
-    deleted = repository.delete(added.id)
+    deleted = repository.delete_transaction(added.id)
 
     assert deleted is True
-    assert repository.list() == []
+    assert repository.get_transactions_by_filters() == []
     assert query_all("SELECT id FROM transactions") == []
 
 
-def test_delete_returns_false_when_missing(repository: TransactionRepository) -> None:
-    assert repository.delete(999) is False
+def test_delete_transaction_returns_false_when_missing(repository: TransactionRepository) -> None:
+    assert repository.delete_transaction(999) is False
 
 
 def test_summarize_groups_amounts_by_day(repository: TransactionRepository) -> None:
@@ -280,13 +292,13 @@ def test_summarize_groups_amounts_by_day(repository: TransactionRepository) -> N
 
 def test_summarize_groups_amounts_by_month(repository: TransactionRepository) -> None:
     seed_transactions(repository)
-    repository.add(
+    repository.add_transaction(
         type=TransactionType.INCOME,
         amount=30000,
         category="Зарплата",
         occurred_at=date(2026, 10, 28),
     )
-    repository.add(
+    repository.add_transaction(
         type=TransactionType.EXPENSE,
         amount=900,
         category="Продукты",
@@ -302,13 +314,13 @@ def test_summarize_groups_amounts_by_month(repository: TransactionRepository) ->
 
 
 def test_summarize_sums_both_types_within_one_day(repository: TransactionRepository) -> None:
-    repository.add(
+    repository.add_transaction(
         type=TransactionType.INCOME,
         amount=100000,
         category="Зарплата",
         occurred_at=date(2026, 11, 5),
     )
-    repository.add(
+    repository.add_transaction(
         type=TransactionType.EXPENSE,
         amount=4200,
         category="Продукты",
