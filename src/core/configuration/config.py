@@ -26,11 +26,7 @@ class Config:
     @classmethod
     def load(cls, env_path: Path = ENV_PATH) -> Config:
         """Читает настройки из .env-файла, подставляя дефолты для отсутствующих ключей."""
-        file_values = {
-            key: value
-            for key, value in dotenv_values(env_path).items()
-            if value
-        }
+        file_values = {key: value for key, value in dotenv_values(env_path).items() if value}
         values = {**DEFAULTS, **file_values}
         return cls(
             db_path=Path(values["FINANCE_TRACKER_DB_PATH"]).expanduser(),

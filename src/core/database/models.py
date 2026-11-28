@@ -1,20 +1,11 @@
 from __future__ import annotations
 
-from enum import Enum
-
 from sqlalchemy import CheckConstraint, Index, Text, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 class Base(DeclarativeBase):
     """Базовый класс для всех ORM-моделей проекта."""
-
-
-class TransactionType(Enum):
-    """Тип финансовой операции: доход или расход."""
-
-    INCOME = "income"
-    EXPENSE = "expense"
 
 
 class Transaction(Base):
