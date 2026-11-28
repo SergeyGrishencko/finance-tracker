@@ -7,12 +7,12 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
+from sqlalchemy.orm import Session
 
-from core.database.db import run_migrations
+from core.database.db import create_db_engine, run_migrations
 
 INSERT_TRANSACTION_SQL = (
-    "INSERT INTO transactions (type, amount, category, note, occurred_at) "
-    "VALUES (?, ?, ?, ?, ?)"
+    "INSERT INTO transactions (type, amount, category, note, occurred_at) VALUES (?, ?, ?, ?, ?)"
 )
 
 
@@ -30,6 +30,16 @@ def db_connection(db_path: Path) -> Iterator[sqlite3.Connection]:
     connection.row_factory = sqlite3.Row
     yield connection
     connection.close()
+
+
+@pytest.fixture
+def db_session(db_path: Path) -> Iterator[Session]:
+    """Открывает SQLAlchemy-сессию к тестовой БД с миграциями и закрывает её после теста."""
+    run_migrations(db_path)
+    engine = create_db_engine(db_path)
+    with Session(engine) as session:
+        yield session
+    engine.dispose()
 
 
 @pytest.fixture
